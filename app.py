@@ -5,6 +5,7 @@ from io import BytesIO
 import csv
 import plotly.express as px
 import plotly.graph_objects as go
+from typing import Optional
 
 # ---------- Page Configuration ----------
 st.set_page_config(
@@ -197,7 +198,7 @@ def compute_numeric_stats(df: pd.DataFrame, column: str) -> dict:
 	}
 
 
-@st.cache_resource(show_spinner='Построение графика...')
+@st.cache_data(show_spinner='Построение графика...')
 def generate_distribution_plot(df: pd.DataFrame, column: str, bins: int) -> go.Figure:
 	"""Строит гистограмму распределения с наложенным box plot.
 
@@ -220,52 +221,77 @@ def generate_distribution_plot(df: pd.DataFrame, column: str, bins: int) -> go.F
 	return fig
 
 
-@st.cache_resource(show_spinner='Построение графика...')
-def generate_line_chart(df: pd.DataFrame, x_col: str, y_col: str) -> go.Figure:
-	"""Строит линейный график для двух столбцов.
+@st.cache_data(show_spinner='Построение графика...')
+def generate_line_chart(df: pd.DataFrame, x_col: str, y_col: str,
+                        agg_func: Optional[str] = None) -> go.Figure:
+	"""Строит линейный график с опциональной агрегацией по оси Y.
 
 	Args:
 		df: DataFrame.
 		x_col: Имя столбца для оси X (может быть любым типом).
 		y_col: Имя числового столбца для оси Y.
+		agg_func: Агрегирующая функция (None, 'sum', 'mean', 'median', 'count').
 
 	Returns:
 		Plotly Figure с линейным графиком.
 	"""
-	fig = px.line(
-		df, x=x_col, y=y_col,
-		title=f'Линейный график: {y_col} от {x_col}',
-		render_mode='webgl'
-	)
-	fig.update_layout(xaxis_title=x_col, yaxis_title=y_col, template='plotly_white')
+	if agg_func:
+		grouped = df.groupby(x_col, as_index=False)[y_col].agg(agg_func)
+		fig = px.line(
+			grouped, x=x_col, y=y_col,
+			title=f'Линейный график: {agg_func}({y_col}) от {x_col}',
+			render_mode='webgl'
+		)
+		y_label = f'{agg_func}({y_col})'
+	else:
+		fig = px.line(
+			df, x=x_col, y=y_col,
+			title=f'Линейный график: {y_col} от {x_col}',
+			render_mode='webgl'
+		)
+		y_label = y_col
+	fig.update_layout(xaxis_title=x_col, yaxis_title=y_label, template='plotly_white')
 	return fig
 
 
-@st.cache_resource(show_spinner='Построение графика...')
+@st.cache_data(show_spinner='Построение графика...')
 def generate_scatter_chart(df: pd.DataFrame, x_col: str, y_col: str,
-                           color_col: str | None = None) -> go.Figure:
-	"""Строит диаграмму рассеяния с опциональной цветовой группировкой.
+                           color_col: str | None = None, agg_func: Optional[str] = None) -> go.Figure:
+	"""Строит диаграмму рассеяния с опциональной цветовой группировкой и агрегацией по оси Y.
 
 	Args:
 		df: DataFrame.
 		x_col: Имя числового столбца для оси X.
 		y_col: Имя числового столбца для оси Y.
 		color_col: Имя столбца для цветового кодирования (или None).
+		agg_func: Агрегирующая функция (None, 'sum', 'mean', 'median', 'count').
 
 	Returns:
 		Plotly Figure – диаграмма рассеяния.
 	"""
-	fig = px.scatter(
-		df, x=x_col, y=y_col,
-		color=color_col,
-		title=f'Диаграмма рассеяния: {y_col} vs {x_col}', opacity=0.8,
-		render_mode='webgl'
-	)
-	fig.update_layout(xaxis_title=x_col, yaxis_title=y_col, template='plotly_white')
+	if agg_func:
+		group_cols = [x_col] if color_col is None else [x_col, color_col]
+		grouped = df.groupby(group_cols, as_index=False)[y_col].agg(agg_func)
+		fig = px.scatter(
+			grouped, x=x_col, y=y_col,
+			color=color_col,
+			title=f'Диаграмма рассеяния: {agg_func}({y_col}) vs {x_col}', opacity=0.8,
+			render_mode='webgl'
+		)
+		y_label = f'{agg_func}({y_col})'
+	else:
+		fig = px.scatter(
+			df, x=x_col, y=y_col,
+			color=color_col,
+			title=f'Диаграмма рассеяния: {y_col} vs {x_col}', opacity=0.8,
+			render_mode='webgl'
+		)
+		y_label = y_col
+	fig.update_layout(xaxis_title=x_col, yaxis_title=y_label, template='plotly_white')
 	return fig
 
 
-@st.cache_resource(show_spinner='Построение графика...')
+@st.cache_data(show_spinner='Построение графика...')
 def generate_bar_chart(df: pd.DataFrame, x_col: str, y_col: str,
                        color_col: str | None = None,
                        agg_func: str = 'sum',
@@ -284,7 +310,7 @@ def generate_bar_chart(df: pd.DataFrame, x_col: str, y_col: str,
 		Plotly Figure – столбчатая диаграмма.
 	"""
 	group_cols = [x_col] if color_col is None else [x_col, color_col]
-	grouped = df.groupby(group_cols)[y_col].agg(agg_func).reset_index()
+	grouped = df.groupby(group_cols, as_index=False)[y_col].agg(agg_func)
 
 	fig = px.bar(
 		grouped, x=x_col, y=y_col,
@@ -296,7 +322,7 @@ def generate_bar_chart(df: pd.DataFrame, x_col: str, y_col: str,
 	return fig
 
 
-@st.cache_resource(show_spinner='Построение матрицы...')
+@st.cache_data(show_spinner='Построение матрицы...')
 def generate_correlation_heatmap(df: pd.DataFrame) -> go.Figure:
 	"""Строит тепловую карту корреляции для числовых столбцов.
 
@@ -318,7 +344,7 @@ def generate_correlation_heatmap(df: pd.DataFrame) -> go.Figure:
 	return fig
 
 
-@st.cache_resource(show_spinner='Построение матрицы...')
+@st.cache_data(show_spinner='Построение матрицы...')
 def generate_scatter_matrix(df: pd.DataFrame) -> go.Figure:
 	"""Строит матрицу диаграмм рассеяния для выбранных столбцов.
 
@@ -507,8 +533,16 @@ def main():
 			else:
 				x_col = container.selectbox('X-axis', all_columns, key='line_x')
 				y_col = container.selectbox('Y-axis', numeric_cols, key='line_y')
+				agg_func = container.selectbox(
+					'Агрегировать значения Y',
+					['None', 'sum', 'mean', 'median', 'count'],
+					key='line_agg',
+					help='Выбор агрегирующей функции для Y при группировке по X. '
+					     'Выберите "None", чтобы не использовать.'
+				)
 				if container.button(f'Создать {plot_type}', type='primary'):
-					fig = generate_line_chart(df, x_col, y_col)
+					fig = generate_line_chart(df, x_col, y_col,
+											  agg_func=None if agg_func == 'None' else agg_func)
 					render_plot_with_download(fig, f'line_{y_col}_vs_{x_col}.png',
 					                          f'⬇️ Скачать {plot_type} (PNG)')
 
@@ -519,6 +553,13 @@ def main():
 			else:
 				x_col = container.selectbox('X-axis', numeric_cols, key='scatter_x')
 				y_col = container.selectbox('Y-axis', numeric_cols, key='scatter_y')
+				agg_func = container.selectbox(
+					'Агрегировать значения Y',
+				    ['None', 'sum', 'mean', 'median', 'count'],
+				    key='scatter_agg',
+				    help='Выбор агрегирующей функции для Y при группировке по X. '
+				         'Выберите "None", чтобы не использовать.'
+				    )
 				color_col = container.selectbox(
 					'Color by (опционально)',
 					['None'] + all_columns,
@@ -529,7 +570,8 @@ def main():
 				if container.button(f'Создать {plot_type}', type='primary'):
 					fig = generate_scatter_chart(
 						df, x_col, y_col,
-						color_col=None if color_col == 'None' else color_col
+						color_col=None if color_col == 'None' else color_col,
+						agg_func=None if agg_func == 'None' else agg_func
 					)
 					render_plot_with_download(fig, f'scatter_{y_col}_vs_{x_col}.png',
 					                          f'⬇️ Скачать {plot_type} (PNG)')
@@ -551,7 +593,7 @@ def main():
 				                            key='bar_y',
 				                            help='Числовой столбец, значения которого будут агрегированы',
 				                            )
-				agg_func = container.radio('Агрегация:',
+				agg_func = container.radio('Агрегировать значения Y:',
 				                           ['sum', 'mean', 'median', 'count'],
 				                           horizontal=True, key='bar_agg',
 				                           help='Выбор агрегирующей функции для Y внутри категории X'
